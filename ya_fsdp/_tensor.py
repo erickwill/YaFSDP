@@ -131,7 +131,7 @@ class RaggedShardDTensor(torch.Tensor):
                 arg._spec,
                 requires_grad=False,
             )
-        if func == torch.ops.aten.clone.default:
+        elif func == torch.ops.aten.clone.default:
             (arg,) = args
             assert len(kwargs) == 0
             return RaggedShardDTensor(
@@ -156,13 +156,47 @@ class RaggedShardDTensor(torch.Tensor):
                 requires_grad=arg.requires_grad,
             )
         elif func in (
+            torch.ops.aten.log_.default,
             torch.ops.aten.zero_.default,
             torch.ops.aten.mul_.Tensor,
             torch.ops.aten.fill_.Scalar,
         ):
             arg, *args = args
-            func(arg._local_tensor, *args, **kwargs)
+            func(
+                arg._local_tensor,
+                *(
+                    arg._local_tensor if isinstance(arg, RaggedShardDTensor) else arg
+                    for arg in args
+                ),
+                **kwargs,
+            )
             return arg
+        elif func in (
+            torch.ops.aten.exp.default,
+            torch.ops.aten.expm1.default,
+            torch.ops.aten.log.default,
+            torch.ops.aten.neg.default,
+            torch.ops.aten.clamp.default,
+            torch.ops.aten.mul.Tensor,
+            torch.ops.aten.add.Tensor,
+        ):
+            arg, *args = args
+            return RaggedShardDTensor(
+                func(
+                    arg._local_tensor,
+                    *(
+                        (
+                            arg._local_tensor
+                            if isinstance(arg, RaggedShardDTensor)
+                            else arg
+                        )
+                        for arg in args
+                    ),
+                    **kwargs,
+                ),
+                arg._spec,
+                requires_grad=arg.requires_grad,
+            )
         elif func in (torch.ops.aten.normal_.default, torch.ops.aten.uniform_.default):
             arg, *args = args
             assert random._rng_tracker is not None
@@ -176,6 +210,22 @@ class RaggedShardDTensor(torch.Tensor):
             with rng_context:
                 func(arg._local_tensor, *args, **kwargs)
             return arg
+        elif func == torch.ops.aten.rand_like.default:
+            arg, *args = args
+            assert random._rng_tracker is not None
+            rng_context = random._rng_tracker._distribute_region(
+                DTensorSpec(
+                    arg._spec.mesh,
+                    (Shard(0), arg._spec.placements[1:]),
+                    arg._spec.tensor_meta,
+                )
+            )
+            with rng_context:
+                return RaggedShardDTensor(
+                    func(arg._local_tensor, *args, **kwargs),
+                    arg._spec,
+                    requires_grad=arg.requires_grad,
+                )
         elif func == torch.ops.aten._foreach_sqrt.default:
             (args,) = args
             local_args = func([arg._local_tensor for arg in args], **kwargs)

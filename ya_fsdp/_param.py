@@ -50,7 +50,7 @@ class YaFSDPParam:
     sharded_param: nn.Parameter
     _all_gather_input: torch.Tensor
     reduce_scatter_output: torch.Tensor | None
-    sharded_param_grad: torch.Tensor | None
+    sharded_param_grad: RaggedShardDTensor | None
     unsharded_param: nn.Parameter
     _unsharded_accumulated_grad: torch.Tensor | None
     unsharded_accumulated_grad: torch.Tensor | None

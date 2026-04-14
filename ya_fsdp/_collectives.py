@@ -9,6 +9,7 @@ from ._param import YaFSDPParam
 
 if TYPE_CHECKING:
     from ._param_group import YaFSDPParamGroup
+    from ._tensor import RaggedShardDTensor
 
     try:
         import yccl
@@ -175,17 +176,21 @@ def reduce_scatter(
             else:
                 torch._foreach_copy_(
                     [
-                        cast("torch.Tensor", fsdp_param.sharded_param_grad)
-                        for fsdp_param in fsdp_params_with_sharded_grad
+                        cast(
+                            "RaggedShardDTensor", fsdp_param.sharded_param_grad
+                        )._local_tensor
+                        for fsdp_param in fsdp_params_without_sharded_grad
                     ],
                     [
                         cast("torch.Tensor", fsdp_param.reduce_scatter_output)
-                        for fsdp_param in fsdp_params_with_sharded_grad
+                        for fsdp_param in fsdp_params_without_sharded_grad
                     ],
                 )
                 torch._foreach_add_(
                     [
-                        cast("torch.Tensor", fsdp_param.sharded_param_grad)
+                        cast(
+                            "RaggedShardDTensor", fsdp_param.sharded_param_grad
+                        )._local_tensor
                         for fsdp_param in fsdp_params_with_sharded_grad
                     ],
                     [
