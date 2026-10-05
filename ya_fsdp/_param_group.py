@@ -1036,6 +1036,19 @@ class YaFSDPParamGroup:
             fsdp_param._module_info.module for fsdp_param in self.fsdp_params
         }
 
+        def to_sharded_save_hook(*args: Any, **kwargs: Any) -> None:
+            if self._is_suspended:
+                # suspend() already bound the CPU shards and released runtime buffers.
+                if not self.is_sharded or any(
+                    fsdp_param._sharded_local_tensor.device.type != "cpu"
+                    for fsdp_param in self.fsdp_params
+                ):
+                    raise RuntimeError(
+                        "Suspended YaFSDP state dict requires sharded CPU parameters"
+                    )
+                return
+            self._to_sharded()
+
         def to_sharded_hook(*args: Any, **kwargs: Any) -> None:
             if self._is_suspended:
                 raise RuntimeError(
@@ -1045,7 +1058,7 @@ class YaFSDPParamGroup:
 
         for module in modules_with_fsdp_params:
             self._module_to_pre_save_state_dict_hook_handle[module] = (
-                module.register_state_dict_pre_hook(to_sharded_hook)
+                module.register_state_dict_pre_hook(to_sharded_save_hook)
             )
             self._module_to_pre_load_state_dict_hook_handle[module] = (
                 module._register_load_state_dict_pre_hook(to_sharded_hook)
